@@ -1,0 +1,9 @@
+[package]
+name = "guardatore-di-allineamenti"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+iced = { version = "0.14.0", features = ["canvas"] }
+iced_font_awesome = "0.4.4"
+rfd = "0.18.0"
