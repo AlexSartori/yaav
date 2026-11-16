@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, sync::Arc};
 
 use iced::{Task, Theme, widget::{Column, column, scrollable}};
 use rfd::AsyncFileDialog;
@@ -23,7 +23,7 @@ struct AppWindow {
 
 impl Default for AppWindow {
     fn default() -> Self {
-        AppWindow { multi_alignment: Vec::new(), nt_display_size: 12 }
+        AppWindow { multi_alignment: Vec::new(), nt_display_size: 16 }
     }
 }
 
@@ -63,7 +63,7 @@ impl AppWindow {
         column![
             toolbar(),
             scrollable(
-                alignment_viewer(&self.multi_alignment, self.nt_display_size as f32)
+                alignment_viewer(&self.multi_alignment, self.nt_display_size)
             ).direction(scrollable::Direction::Both{
                 vertical: scrollable::Scrollbar::new(),
                 horizontal: scrollable::Scrollbar::new()
@@ -96,14 +96,18 @@ fn read_fasta(contents: String) -> MultiAlignment {
     let mut curr_seq = "".to_owned();
     for l in contents.lines() {
         if l.starts_with(">") {
-            result.push(Sequence { id: curr_header, seq: curr_seq.chars().collect() });
+            result.push(
+                Arc::new(Sequence::new(&curr_header, curr_seq.chars().collect()))
+            );
             curr_header = l.to_owned();
             curr_seq = "".to_owned()
         } else {
             curr_seq.extend(l.chars());
         }
     }
-    result.push(Sequence { id: curr_header, seq: curr_seq.chars().collect() });
+    result.push(
+        Arc::new(Sequence::new(&curr_header, curr_seq.chars().collect()))
+    );
 
     result
 }
