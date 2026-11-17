@@ -1,18 +1,19 @@
 use std::{hash::Hash, sync::Arc, time::Instant};
-
-use iced::{
-    Element, Length::Fill, widget::{
-        Text, button, canvas, column, container, lazy, row, space, text
-    }
+use iced::widget::canvas::Stroke;
+use iced::{Color, Element, Rectangle, Renderer, Theme, keyboard};
+use iced::widget::{
+    Text, canvas, column, lazy, row, space, text
 };
-use iced::{Color, Rectangle, Renderer, Theme};
-use iced_font_awesome::{fa_icon, fa_icon_solid};
-
-use crate::{components::{COLOR_NT_A, COLOR_NT_C, COLOR_NT_G, COLOR_NT_N, COLOR_NT_T, COLOR_NT_Z}, types::{MultiAlignment, Sequence}};
+use crate::{
+    components::{COLOR_NT_A, COLOR_NT_C, COLOR_NT_G, COLOR_NT_N, COLOR_NT_T, COLOR_NT_Z},
+    types::{MultiAlignment, Sequence},
+    hershey
+};
 
 
 #[derive(Clone)]
 pub enum Message {
+    KBEvent(keyboard::Event),
     OpenFasta,
     FileSelected(Option<std::path::PathBuf>),
     ZoomMinus,
@@ -56,45 +57,30 @@ impl <Message> canvas::Program<Message> for SequenceCanvas {
                     'z' | 'Z' | '-' | ' ' => COLOR_NT_Z,
                     _ => COLOR_NT_N,
                 };
-                // Draw background rectangle
+                
                 frame.fill_rectangle(
                     iced::Point::new(x, y),
                     iced::Size::new(cs, cs),
                     nt_color,
                 );
-                // Draw character
-                frame.fill_text(canvas::Text {
-                    content: nt.to_string(),
-                    position: iced::Point::new(x + cs/2.0, 0.0),
-                    color: Color::BLACK,
-                    size: iced::Pixels::from(cs * 0.8),
-                    ..Default::default()
-                });
+
+                let stroke = Stroke::default().with_color(Color::BLACK);
+                for p in hershey::get_scaled_character(*nt, x, y-2.0, cs as usize) {
+                    frame.stroke(&p, stroke);
+                }
+                
+                // frame.fill_text(canvas::Text {
+                //     content: nt.to_string(),
+                //     position: iced::Point::new(x + cs/2.0, 0.0),
+                //     color: Color::BLACK,
+                //     size: iced::Pixels::from(cs * 0.8),
+                //     ..Default::default()
+                // });
             }
         });
 
         vec![geometry]
     }
-}
-
-
-pub fn toolbar<'a>() -> Element<'a, Message> {
-    container(
-        row![
-            button(
-                fa_icon_solid("folder-open")
-            ).on_press(Message::OpenFasta),
-            button(
-                fa_icon_solid("magnifying-glass-minus")
-            ).on_press(Message::ZoomMinus),
-            button(
-                fa_icon_solid("magnifying-glass-plus")
-            ).on_press(Message::ZoomPlus)
-        ].spacing(10)
-    )
-    .width(Fill)
-    .padding(6)
-    .into()
 }
 
 pub fn alignment_viewer<'a>(multi_alignment: &'a MultiAlignment, nt_display_size: u8) -> Element<'a, Message> {

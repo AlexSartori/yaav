@@ -1092,6 +1092,7 @@ version = "0.1.0"
 dependencies = [
  "iced",
  "iced_font_awesome",
+ "keybinds",
  "rfd",
 ]
 
@@ -1470,6 +1471,16 @@ dependencies = [
  "cfg-if",
  "futures-util",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "keybinds"
+version = "0.2.0"
+source = "git+https://github.com/podzolelements/keybinds-rs?branch=iced_0.14.0#1ebd1ef3178149cb829f3d035f4d07573718e70f"
+dependencies = [
+ "bitflags 2.13.2",
+ "iced",
+ "smallvec",
 ]
 
 [[package]]

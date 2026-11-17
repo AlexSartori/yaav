@@ -1,13 +1,17 @@
 use std::{fs, sync::Arc};
 
-use iced::{Task, Theme, widget::{Column, column, scrollable}};
+use iced::{Subscription, Task, Theme, widget::{Column, column, scrollable}};
 use rfd::AsyncFileDialog;
+use keybinds::{KeyInput, Keybinds};
 
 mod alignment_viewer;
+mod toolbar;
 mod types;
 mod components;
+mod hershey;
 
-use crate::alignment_viewer::{Message,alignment_viewer,toolbar};
+use crate::alignment_viewer::{Message,alignment_viewer};
+use crate::toolbar::toolbar;
 use crate::types::{MultiAlignment,Sequence};
 use crate::components::PALETTE;
 
@@ -15,15 +19,28 @@ use crate::components::PALETTE;
 const MIN_ZOOM: u8 = 6;
 const MAX_ZOOM: u8 = 36;
 
+#[derive(Debug,Clone)]
+enum KBAction {
+    OpenFile
+}
+
 #[derive(Debug, Clone)]
 struct AppWindow {
     multi_alignment: MultiAlignment,
     nt_display_size: u8,
+    keybinds: Keybinds<KBAction>
 }
 
 impl Default for AppWindow {
     fn default() -> Self {
-        AppWindow { multi_alignment: Vec::new(), nt_display_size: 16 }
+        let mut kb = Keybinds::default();
+        kb.bind("Ctrl+o", KBAction::OpenFile).unwrap();
+
+        Self {
+            multi_alignment: Vec::new(),
+            nt_display_size: 16,
+            keybinds: kb
+        }
     }
 }
 
@@ -55,6 +72,25 @@ impl AppWindow {
             Message::ZoomPlus => {
                 if self.nt_display_size < MAX_ZOOM { self.nt_display_size += 1; }
                 Task::none()
+            },
+            Message::KBEvent(evt) => {
+                if let Some(action) = self.keybinds.dispatch(evt) {
+                    match action {
+                        KBAction::OpenFile => {
+                            // Task::done(Message::OpenFasta)
+                            self.multi_alignment = vec![
+                                Arc::new(Sequence::new("seq_1", "ACGTAGCGGCTATAGCTCAT".chars().collect())),
+                                Arc::new(Sequence::new("seq_2", "ACGACGATCATGCGATGCATGCA".chars().collect())),
+                                Arc::new(Sequence::new("seq_3", "aCAGCTCGAGACTCTAGCA".chars().collect())),
+                                Arc::new(Sequence::new("seq_4", "AAAAAAAAAAAAACCCCCCCCCCCTTTTT".chars().collect())),
+                            ];
+                            Task::none()
+                        },
+                        _ => Task::none()
+                    }
+                } else {
+                    Task::none()
+                }
             }
         }
     }
@@ -73,6 +109,13 @@ impl AppWindow {
         .spacing(4)
         .padding(4)
         .into()
+    }
+
+    pub fn subscription(&self) -> Subscription<Message> {
+        iced::event::listen_with(|event, _, _| match event {
+            iced::Event::Keyboard(event) => Some(Message::KBEvent(event)),
+            _ => None,
+        })
     }
 
 }
@@ -115,6 +158,7 @@ fn read_fasta(contents: String) -> MultiAlignment {
 // $env:CARGO_INCREMENTAL=0; cargo run
 fn main() -> iced::Result {
     iced::application(AppWindow::default, AppWindow::update, AppWindow::view)
+    .subscription(AppWindow::subscription)
     .title("Sweggheti sweg")
     .theme(Theme::custom("alesc", PALETTE))
     .run()
