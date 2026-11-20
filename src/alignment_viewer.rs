@@ -11,13 +11,15 @@ use crate::{
 };
 
 
-#[derive(Clone)]
+#[derive(Debug,Clone)]
 pub enum Message {
     KBEvent(keyboard::Event),
+    MultiAlignmentReady(Result<MultiAlignment,String>),
+    MultiAlignmentStartLoading(Result<std::path::PathBuf,String>),
     OpenFasta,
-    FileSelected(Option<std::path::PathBuf>),
     ZoomMinus,
-    ZoomPlus
+    ZoomPlus,
+    Test
 }
 
 #[derive(Debug,Clone,Hash)]
@@ -68,14 +70,6 @@ impl <Message> canvas::Program<Message> for SequenceCanvas {
                 for p in hershey::get_scaled_character(*nt, x, y-2.0, cs as usize) {
                     frame.stroke(&p, stroke);
                 }
-                
-                // frame.fill_text(canvas::Text {
-                //     content: nt.to_string(),
-                //     position: iced::Point::new(x + cs/2.0, 0.0),
-                //     color: Color::BLACK,
-                //     size: iced::Pixels::from(cs * 0.8),
-                //     ..Default::default()
-                // });
             }
         });
 
@@ -107,8 +101,7 @@ fn sequence<'a>(seq: Arc<Sequence>, nt_display_size: u8) -> Element<'a, Message>
         canvas(c.clone())
         .width(w)
         .height(h)
-    })
-    .into()
+    }).into()
 }
 
 fn sequence_name(name: &str, nt_display_size: u8) -> Text<'_> {

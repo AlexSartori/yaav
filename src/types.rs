@@ -7,14 +7,16 @@ pub type MultiAlignment = Vec<Arc<Sequence>>;
 pub struct Sequence {
     pub id: String,
     pub seq: Vec<Nucleotide>,
+    uid: u64,
     version: u64
 }
 
 impl Sequence {
-    pub fn new(id: &str, seq: Vec<char>) -> Self {
+    pub fn new(uid: u64, id: &str, seq: Vec<char>) -> Self {
         Self {
             id: id.to_owned(),
             seq: seq,
+            uid: uid,
             version: 0
         }
     }
@@ -22,7 +24,7 @@ impl Sequence {
 
 impl Hash for Sequence {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
+        self.uid.hash(state);
         self.version.hash(state);
     }
 }
