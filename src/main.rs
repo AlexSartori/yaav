@@ -1,6 +1,6 @@
 use std::{fs, sync::Arc};
 
-use iced::{Subscription, Task, Theme, widget::{Column, column, scrollable}};
+use iced::{Element, Length, Subscription, Task, Theme, widget::{Column, column, text}};
 use rfd::AsyncFileDialog;
 use keybinds::Keybinds;
 
@@ -10,24 +10,23 @@ mod types;
 mod components;
 mod hershey;
 
-use crate::alignment_viewer::{Message,alignment_viewer};
+use crate::alignment_viewer::{Message,AlignmentView,AlignmentState};
 use crate::toolbar::toolbar;
 use crate::types::{MultiAlignment,Sequence};
 use crate::components::PALETTE;
 
 
-const MIN_ZOOM: u8 = 6;
-const MAX_ZOOM: u8 = 36;
+const DEFAULT_ZOOM: f32 = 14.0;
+const DEFAULT_SCROLL_SPEED: f32 = 4.0;
 
 #[derive(Debug,Clone)]
 enum KBAction {
     OpenFile
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct AppWindow {
-    multi_alignment: MultiAlignment,
-    nt_display_size: u8,
+    alignment_state: AlignmentState,
     keybinds: Keybinds<KBAction>,
     is_loading: bool
 }
@@ -38,8 +37,7 @@ impl Default for AppWindow {
         kb.bind("Ctrl+o", KBAction::OpenFile).unwrap();
 
         Self {
-            multi_alignment: Vec::new(),
-            nt_display_size: 16,
+            alignment_state: AlignmentState::new(Arc::new(vec![]), DEFAULT_ZOOM, DEFAULT_SCROLL_SPEED),
             keybinds: kb,
             is_loading: false
         }
@@ -64,30 +62,28 @@ impl AppWindow {
                 self.is_loading = false;
 
                 match m {
-                    Ok(m_ok) => self.multi_alignment = m_ok,
+                    Ok(m_ok) => self.alignment_state = AlignmentState::new(Arc::new(m_ok), self.alignment_state.cell_size, self.alignment_state.scroll_speed),
                     _ => println!("Error loading multi alignment") // TODO: alert
                 }
                 Task::none()
             },
             Message::ZoomMinus => {
-                if self.nt_display_size > MIN_ZOOM { self.nt_display_size -= 1; }
-                Task::none()
+                Task::done(Message::AlignmentStateChanged(alignment_viewer::AlignmentEvent::ZoomBy(-1.0)))
             },
             Message::ZoomPlus => {
-                if self.nt_display_size < MAX_ZOOM { self.nt_display_size += 1; }
-                Task::none()
+                Task::done(Message::AlignmentStateChanged(alignment_viewer::AlignmentEvent::ZoomBy(1.0)))
             },
             Message::KBEvent(evt) => {
                 if let Some(action) = self.keybinds.dispatch(evt) {
                     match action {
                         KBAction::OpenFile => {
                             // Task::done(Message::OpenFasta)
-                            self.multi_alignment = vec![
+                            self.alignment_state = AlignmentState::new(Arc::new(vec![
                                 Arc::new(Sequence::new(0, "seq_1", "ACGTAGCGGCTATAGCTCAT".chars().collect())),
                                 Arc::new(Sequence::new(1, "seq_2", "ACGACGATCATGCGATGCATGCA".chars().collect())),
                                 Arc::new(Sequence::new(2, "seq_3", "aCAGCTCGAGACTCTAGCA".chars().collect())),
                                 Arc::new(Sequence::new(3, "seq_4", "AAAAAAAAAAAAACCCCCCCCCCCTTTTT".chars().collect())),
-                            ];
+                            ]), 14.0, 2.0);
                             Task::none()
                         },
                         _ => Task::none()
@@ -96,6 +92,11 @@ impl AppWindow {
                     Task::none()
                 }
             },
+            Message::AlignmentStateChanged(evt) => {
+                println!("AlignmentEvent: {:?}", evt);
+                self.alignment_state.update(evt);
+                Task::none()
+            }
             Message::Test => {
                 println!("Test message signal received");
                 Task::none()
@@ -110,13 +111,7 @@ impl AppWindow {
     pub fn view(&'_ self) -> Column<'_, Message> {
         column![
             toolbar(),
-            scrollable(
-                alignment_viewer(&self.multi_alignment, self.nt_display_size)
-            ).direction(scrollable::Direction::Both{
-                vertical: scrollable::Scrollbar::new(),
-                horizontal: scrollable::Scrollbar::new()
-            }).height(iced::Length::Fill)
-            .width(iced::Length::Fill)
+            AlignmentView::new(&self.alignment_state, Message::AlignmentStateChanged)
         ]
         .spacing(4)
         .padding(4)
