@@ -51,6 +51,13 @@ impl Hash for Sequence {
     }
 }
 
+#[derive(Debug,Clone)]
+pub struct CellSelection {
+    pub from_row: usize,
+    pub from_col: usize,
+    pub to_row: usize,
+    pub to_col: usize
+}
 
 #[derive(Debug,Clone,PartialEq)]
 pub enum SequenceEncoding {

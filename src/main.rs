@@ -95,14 +95,6 @@ impl AppWindow {
             Message::AlignmentStateChanged(evt) => {
                 self.alignment_state.update(evt);
                 Task::none()
-            },
-            Message::Test => {
-                println!("Test message signal received");
-                Task::none()
-            },
-            m => {
-                println!("Unhandled message: {:?}", m);
-                Task::none()
             }
         }
     }

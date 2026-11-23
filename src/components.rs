@@ -15,6 +15,9 @@ const COLOR_DNG: Color = color!(255, 153, 155);
 const COLOR_SUC: Color = color!(170, 246, 131);
 const COLOR_WRN: Color = color!(234, 220, 113);
 
+pub const COLOR_CELL_HOVERED: Color = color!(230, 230, 230);
+pub const COLOR_CELL_SELECTED: Color = color!(200, 10, 10);
+
 pub const COLOR_NT_A: Color = color!(243, 165, 188);
 pub const COLOR_NT_C: Color = color!(148, 184, 219);
 pub const COLOR_NT_G: Color = color!(171, 207, 160);
@@ -59,5 +62,5 @@ pub const PALETTE: Palette = Palette {
     primary: COLOR_PRI,
     success: COLOR_SUC,
     danger: COLOR_DNG,
-    warning: COLOR_WRN
+    warning: COLOR_WRN,
 };

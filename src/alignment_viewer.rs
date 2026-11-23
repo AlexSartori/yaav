@@ -4,9 +4,10 @@ use iced::widget::canvas::{Cache, Path, Stroke};
 use iced::{Color, Element, Length, Point, Rectangle, Size, Theme, keyboard, mouse};
 use iced::widget::{canvas, combo_box};
 use crate::alignment_viewer::SequenceEncoding::Aminoacidic;
+use crate::components::{COLOR_CELL_HOVERED, COLOR_CELL_SELECTED};
 use crate::hershey::push_glyph;
 use crate::utils;
-use crate::types::SequenceEncoding;
+use crate::types::{CellSelection, SequenceEncoding};
 use crate::types::MultiAlignment;
 
 
@@ -23,12 +24,12 @@ pub enum Message {
     AlignmentStateChanged(AlignmentEvent),
     OpenFasta,
     ZoomMinus,
-    ZoomPlus,
-    Test
+    ZoomPlus
 }
 
 #[derive(Debug,Clone)]
 pub enum AlignmentEvent {
+    SelectCells(CellSelection),
     ScrollTo(Point),
     ZoomBy(f32),
     EncodingChanged(SequenceEncoding),
@@ -44,7 +45,7 @@ pub struct AlignmentState {
     pub cell_size: f32,
     pub scroll_offset: Point,
     pub scroll_speed: f32,
-    pub hovered: Option<(usize, usize)>, // (row, col)
+    pub selected_cells: Option<CellSelection>,
 
     // Base grid cache (cleared only on scroll, zoom, or data change)
     grid_cache: canvas::Cache,
@@ -65,7 +66,7 @@ impl AlignmentState {
             cell_size: cell_size,
             scroll_speed: scroll_speed,
             scroll_offset: Point::ORIGIN,
-            hovered: None,
+            selected_cells: None,
             grid_cache: canvas::Cache::new(),
             overlay_cache: Cache::new(),
         }
@@ -73,6 +74,10 @@ impl AlignmentState {
 
     pub fn update(&mut self, event: AlignmentEvent) {
         match event {
+            AlignmentEvent::SelectCells(cs) => {
+                self.selected_cells = Some(cs);
+                self.overlay_cache.clear();
+            }
             AlignmentEvent::ScrollTo(p) => {
                 self.scroll_offset = p;
                 self.invalidate_cache();
@@ -102,6 +107,7 @@ struct AlignmentProgram<'a> {
 #[derive(Default)]
 struct CanvasLocalState {
     current_hover: Option<(usize, usize)>,
+    is_left_button_pressed: bool,
     kb_mods: keyboard::Modifiers
 }
 
@@ -117,7 +123,7 @@ impl<'a> canvas::Program<AlignmentEvent> for AlignmentProgram<'a> {
     ) -> Option<canvas::Action<AlignmentEvent>> {
         match event {
             canvas::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
-                let next_hover = cursor.position_in(bounds).and_then(|pos| {
+                let mouse_pos = cursor.position_in(bounds).and_then(|pos| {
                     let col = ((pos.x + self.state.scroll_offset.x) / self.state.cell_size) as usize;
                     let row = ((pos.y + self.state.scroll_offset.y) / self.state.cell_size) as usize;
                     if row < self.state.sequences.len() && col < self.state.sequences[row].original_seq.len() {
@@ -127,17 +133,41 @@ impl<'a> canvas::Program<AlignmentEvent> for AlignmentProgram<'a> {
                     }
                 });
 
-                if state.current_hover != next_hover {
-                    state.current_hover = next_hover;
-                    self.state.overlay_cache.clear();
-                    return Some(canvas::Action::request_redraw());
+                if state.current_hover == mouse_pos {
+                    return None;
                 }
-                None
+                
+                state.current_hover = mouse_pos;
+                self.state.overlay_cache.clear();
+            
+                if state.is_left_button_pressed {
+                    let (cr, cc) = state.current_hover.unwrap();
+                    state.current_hover = None;
+                    let curr_sel = self.state.selected_cells.as_ref().unwrap();
+                    let new_sel = CellSelection{
+                        from_row: curr_sel.from_row,
+                        from_col: curr_sel.from_col,
+                        to_row: cr,
+                        to_col: cc
+                    };
+                    Some(canvas::Action::publish(
+                        AlignmentEvent::SelectCells(new_sel)
+                    ))
+                } else {
+                    Some(canvas::Action::request_redraw())
+                }
             }
             canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-                // if let Some((row, col)) = *current_hover {
-                //     return Some(canvas::Action::publish((self.on_select)(row, col)));
-                // }
+                if let Some((row, col)) = state.current_hover {
+                    state.is_left_button_pressed = true;
+                    return Some(canvas::Action::publish(AlignmentEvent::SelectCells(
+                        CellSelection{ from_row: row, from_col: col, to_row: row, to_col: col }
+                    )));
+                }
+                None
+            },
+            canvas::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                state.is_left_button_pressed = false;
                 None
             }
             canvas::Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
@@ -251,7 +281,29 @@ impl<'a> canvas::Program<AlignmentEvent> for AlignmentProgram<'a> {
                     frame.stroke(
                         &highlight,
                         Stroke::default()
-                            .with_color(Color::WHITE)
+                            .with_color(COLOR_CELL_HOVERED)
+                            .with_width(1.0),
+                    );
+                }
+                if let Some(sel) = self.state.selected_cells.as_ref() {
+                    let mut x1 = sel.from_col as f32 * cs - scroll_x;
+                    let mut y1 = sel.from_row as f32 * cs - scroll_y;
+                    let mut x2 = sel.to_col as f32 * cs - scroll_x;
+                    let mut y2 = sel.to_row as f32 * cs - scroll_y;
+
+                    if x1 > x2 {
+                        (x1, x2) = (x2, x1);
+                    }
+                    if y1 > y2 {
+                        (y1, y2) = (y2, y1);
+                    }
+                    let (w, h) = (x2 - x1 + cs, y2 - y1 + cs);
+
+                    let highlight = Path::rectangle(Point::new(x1, y1), Size::new(w, h));
+                    frame.stroke(
+                        &highlight,
+                        Stroke::default()
+                            .with_color(COLOR_CELL_SELECTED)
                             .with_width(2.0),
                     );
                 }
