@@ -1,9 +1,12 @@
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 use iced::mouse::ScrollDelta;
 use iced::widget::canvas::{Cache, Path, Stroke};
 use iced::{Color, Element, Length, Point, Rectangle, Size, Theme, keyboard, mouse};
-use iced::widget::canvas;
-use crate::hershey;
+use iced::widget::{canvas, combo_box};
+use crate::alignment_viewer::AlignmentEvent::EncodingChanged;
+use crate::alignment_viewer::SequenceEncoding::Aminoacidic;
+use crate::{hershey, utils};
+use crate::types::SequenceEncoding;
 use crate::{
     components::{COLOR_NT_A, COLOR_NT_C, COLOR_NT_G, COLOR_NT_N, COLOR_NT_T, COLOR_NT_Z},
     types::MultiAlignment,
@@ -30,13 +33,16 @@ pub enum Message {
 #[derive(Debug,Clone)]
 pub enum AlignmentEvent {
     ScrollTo(Point),
-    ZoomBy(f32)
+    ZoomBy(f32),
+    EncodingChanged(SequenceEncoding),
 }
 
 #[derive(Debug)]
 pub struct AlignmentState {
-    pub sequences: Arc<MultiAlignment>,
+    pub sequences: Box<MultiAlignment>,
     pub max_len: usize,
+    pub display_encoding: SequenceEncoding,
+    pub display_combobox: combo_box::State<SequenceEncoding>,
 
     pub cell_size: f32,
     pub scroll_offset: Point,
@@ -50,11 +56,15 @@ pub struct AlignmentState {
 }
 
 impl AlignmentState {
-    pub fn new(sequences: Arc<MultiAlignment>, cell_size: f32, scroll_speed: f32) -> Self {
-        let max_len = sequences.iter().map(|s| s.seq.len()).max().unwrap_or(0);
+    pub fn new(sequences: Box<MultiAlignment>, cell_size: f32, scroll_speed: f32) -> Self {
+        let max_len = sequences.iter().map(|s| s.original_seq.len()).max().unwrap_or(0);
         Self {
-            sequences,
-            max_len,
+            sequences: sequences,
+            max_len: max_len,
+            display_encoding: SequenceEncoding::Nucleotidic,
+            display_combobox: combo_box::State::new(vec![
+                SequenceEncoding::Nucleotidic, SequenceEncoding::Aminoacidic
+            ]),
             cell_size: cell_size,
             scroll_speed: scroll_speed,
             scroll_offset: Point::ORIGIN,
@@ -68,15 +78,23 @@ impl AlignmentState {
         match event {
             AlignmentEvent::ScrollTo(p) => {
                 self.scroll_offset = p;
-                self.grid_cache.clear();
-                self.overlay_cache.clear();
+                self.invalidate_cache();
             },
             AlignmentEvent::ZoomBy(z) => {
                 self.cell_size = (self.cell_size + z).clamp(MIN_ZOOM, MAX_ZOOM);
-                self.grid_cache.clear();
-                self.overlay_cache.clear();
+                self.invalidate_cache();
+            },
+            AlignmentEvent::EncodingChanged(new_encoding) => {
+                utils::update_alignment_translation(self, &new_encoding);
+                self.display_encoding = new_encoding;
+                self.invalidate_cache();
             }
         }
+    }
+
+    fn invalidate_cache(&self) {
+        self.grid_cache.clear();
+        self.overlay_cache.clear();
     }
 }
 
@@ -105,7 +123,7 @@ impl<'a> canvas::Program<AlignmentEvent> for AlignmentProgram<'a> {
                 let next_hover = cursor.position_in(bounds).and_then(|pos| {
                     let col = ((pos.x + self.state.scroll_offset.x) / self.state.cell_size) as usize;
                     let row = ((pos.y + self.state.scroll_offset.y) / self.state.cell_size) as usize;
-                    if row < self.state.sequences.len() && col < self.state.sequences[row].seq.len() {
+                    if row < self.state.sequences.len() && col < self.state.sequences[row].original_seq.len() {
                         Some((row, col))
                     } else {
                         None
@@ -132,6 +150,8 @@ impl<'a> canvas::Program<AlignmentEvent> for AlignmentProgram<'a> {
                     ScrollDelta::Lines{x, y} => (x * cs, y * cs),
                     ScrollDelta::Pixels{x, y} => (*x, *y)
                 };
+
+                dx *= 2.0;
 
                 if state.kb_mods.control() {
                     return Some(
@@ -173,6 +193,10 @@ impl<'a> canvas::Program<AlignmentEvent> for AlignmentProgram<'a> {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
+        let is_aa = self.state.display_encoding == Aminoacidic;
+        let seqs: Vec<Option<&Vec<char>>> = self.state.sequences.iter().map(|s|
+            if is_aa { s.aa_seq.as_ref() } else { Some(&s.original_seq) }
+        ).collect();
         let cs = self.state.cell_size as f32;
         let (scroll_x, scroll_y) = (self.state.scroll_offset.x, self.state.scroll_offset.y);
 
@@ -182,7 +206,7 @@ impl<'a> canvas::Program<AlignmentEvent> for AlignmentProgram<'a> {
             let first_row = (scroll_y / cs).floor().max(0.0) as usize;
             let last_row = ((scroll_y + bounds.height) / cs)
                 .ceil()
-                .min(self.state.sequences.len() as f32) as usize;
+                .min(seqs.len() as f32) as usize;
 
             let first_col = (scroll_x / cs).floor().max(0.0) as usize;
             let last_col = ((scroll_x + bounds.width) / cs)
@@ -190,32 +214,26 @@ impl<'a> canvas::Program<AlignmentEvent> for AlignmentProgram<'a> {
                 .min(self.state.max_len as f32) as usize;
 
             for row_idx in first_row..last_row {
-                let row = &self.state.sequences[row_idx];
+                if seqs[row_idx].is_none() { continue; }
+                let row = seqs[row_idx].unwrap();
                 let y = row_idx as f32 * cs - scroll_y;
-                let row_end_col = last_col.min(row.seq.len());
+                let row_end_col = last_col.min(row.len());
 
                 for col_idx in first_col..row_end_col {
-                    let nt = row.seq[col_idx];
+                    let base = row[col_idx];
                     let x = col_idx as f32 * cs - scroll_x;
                     let rect_pos = Point::new(x, y);
-                    let nt_color = match nt {
-                        'a' | 'A' => COLOR_NT_A,
-                        'c' | 'C' => COLOR_NT_C,
-                        'g' | 'G' => COLOR_NT_G,
-                        't' | 'T' => COLOR_NT_T,
-                        'z' | 'Z' | '-' | ' ' => COLOR_NT_Z,
-                        _ => COLOR_NT_N,
-                    };
+                    let base_color = utils::get_base_color(base, is_aa);
                 
                     frame.fill_rectangle(
                         rect_pos,
                         iced::Size::new(cs, cs),
-                        nt_color,
+                        base_color,
                     );
 
                     if cs >= MIN_ZOOM_FOR_TEXT {
                         let stroke = Stroke::default().with_color(Color::BLACK);
-                        for p in hershey::get_scaled_character(nt, x, y-2.0, cs as usize) {
+                        for p in hershey::get_scaled_character(base, x, y-2.0, cs as usize) {
                             frame.stroke(&p, stroke);
                         }
                     }
@@ -283,10 +301,3 @@ impl<'a, Message: 'a> From<AlignmentView<'a, Message>> for Element<'a, Message> 
         canvas.map(view.on_event)
     }
 }
-
-// fn sequence_name(name: &str, nt_display_size: u8) -> Text<'_> {
-//     text(name)
-//     .size(iced::Pixels(nt_display_size as f32))
-//     .width(200)
-//     .height(nt_display_size as f32)
-// }

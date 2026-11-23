@@ -1,10 +1,10 @@
-use iced::{Element, widget::{button, container, row}};
+use iced::{Element, widget::{button, combo_box, container, row}};
 use iced_font_awesome::fa_icon_solid;
 
-use crate::alignment_viewer::Message;
+use crate::alignment_viewer::{AlignmentEvent, AlignmentState, Message};
 
 
-pub fn toolbar<'a>() -> Element<'a, Message> {
+pub fn toolbar(state: &AlignmentState) -> Element<'_, Message> {
     container(
         row![
             button(
@@ -15,7 +15,10 @@ pub fn toolbar<'a>() -> Element<'a, Message> {
             ).on_press(Message::ZoomMinus),
             button(
                 fa_icon_solid("magnifying-glass-plus")
-            ).on_press(Message::ZoomPlus)
+            ).on_press(Message::ZoomPlus),
+            combo_box(
+                &state.display_combobox, "", Some(&state.display_encoding), |a| Message::AlignmentStateChanged(AlignmentEvent::EncodingChanged(a))
+            ).width(200)
         ].spacing(10)
     )
     .width(iced::Length::Fill)

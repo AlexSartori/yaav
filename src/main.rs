@@ -1,6 +1,6 @@
-use std::{fs, sync::Arc};
+use std::fs;
 
-use iced::{Element, Length, Subscription, Task, Theme, widget::{Column, column, text}};
+use iced::{Subscription, Task, Theme, widget::{Column, column}};
 use rfd::AsyncFileDialog;
 use keybinds::Keybinds;
 
@@ -9,8 +9,9 @@ mod toolbar;
 mod types;
 mod components;
 mod hershey;
+mod utils;
 
-use crate::alignment_viewer::{Message,AlignmentView,AlignmentState};
+use crate::alignment_viewer::{AlignmentState, AlignmentView, Message};
 use crate::toolbar::toolbar;
 use crate::types::{MultiAlignment,Sequence};
 use crate::components::PALETTE;
@@ -37,7 +38,7 @@ impl Default for AppWindow {
         kb.bind("Ctrl+o", KBAction::OpenFile).unwrap();
 
         Self {
-            alignment_state: AlignmentState::new(Arc::new(vec![]), DEFAULT_ZOOM, DEFAULT_SCROLL_SPEED),
+            alignment_state: AlignmentState::new(Box::new(vec![]), DEFAULT_ZOOM, DEFAULT_SCROLL_SPEED),
             keybinds: kb,
             is_loading: false
         }
@@ -62,7 +63,7 @@ impl AppWindow {
                 self.is_loading = false;
 
                 match m {
-                    Ok(m_ok) => self.alignment_state = AlignmentState::new(Arc::new(m_ok), self.alignment_state.cell_size, self.alignment_state.scroll_speed),
+                    Ok(m_ok) => self.alignment_state = AlignmentState::new(Box::new(m_ok), self.alignment_state.cell_size, self.alignment_state.scroll_speed),
                     _ => println!("Error loading multi alignment") // TODO: alert
                 }
                 Task::none()
@@ -78,25 +79,23 @@ impl AppWindow {
                     match action {
                         KBAction::OpenFile => {
                             // Task::done(Message::OpenFasta)
-                            self.alignment_state = AlignmentState::new(Arc::new(vec![
-                                Arc::new(Sequence::new(0, "seq_1", "ACGTAGCGGCTATAGCTCAT".chars().collect())),
-                                Arc::new(Sequence::new(1, "seq_2", "ACGACGATCATGCGATGCATGCA".chars().collect())),
-                                Arc::new(Sequence::new(2, "seq_3", "aCAGCTCGAGACTCTAGCA".chars().collect())),
-                                Arc::new(Sequence::new(3, "seq_4", "AAAAAAAAAAAAACCCCCCCCCCCTTTTT".chars().collect())),
+                            self.alignment_state = AlignmentState::new(Box::new(vec![
+                                Sequence::new(0, "seq_1", "ACGTAGCGGCTATAGCTCAT".chars().collect()),
+                                Sequence::new(1, "seq_2", "ACGACGATCATGCGATGCATGCA".chars().collect()),
+                                Sequence::new(2, "seq_3", "aCAGCTCGAGACTCTAGCA".chars().collect()),
+                                Sequence::new(3, "seq_4", "AAAAAAAAAAAAACCCCCCCCCCCTTTTT".chars().collect()),
                             ]), 14.0, 2.0);
                             Task::none()
-                        },
-                        _ => Task::none()
+                        }
                     }
                 } else {
                     Task::none()
                 }
             },
             Message::AlignmentStateChanged(evt) => {
-                println!("AlignmentEvent: {:?}", evt);
                 self.alignment_state.update(evt);
                 Task::none()
-            }
+            },
             Message::Test => {
                 println!("Test message signal received");
                 Task::none()
@@ -110,7 +109,7 @@ impl AppWindow {
 
     pub fn view(&'_ self) -> Column<'_, Message> {
         column![
-            toolbar(),
+            toolbar(&self.alignment_state),
             AlignmentView::new(&self.alignment_state, Message::AlignmentStateChanged)
         ]
         .spacing(4)
@@ -153,7 +152,7 @@ async fn read_fasta(p: std::path::PathBuf) -> Result<MultiAlignment, String> {
     let mut uid = 0u64;
     let mut new_seq = |h: String, s: String| {
         uid += 1;
-        Arc::new(Sequence::new(uid, &h.to_string(), s.chars().collect()))
+        Sequence::new(uid, &h.to_string(), s.chars().collect())
     };
 
     let mut curr_header = "".to_owned();
