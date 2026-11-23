@@ -1,16 +1,13 @@
-use std::time::Instant;
 use iced::mouse::ScrollDelta;
+use iced::widget::canvas::path::Builder;
 use iced::widget::canvas::{Cache, Path, Stroke};
 use iced::{Color, Element, Length, Point, Rectangle, Size, Theme, keyboard, mouse};
 use iced::widget::{canvas, combo_box};
-use crate::alignment_viewer::AlignmentEvent::EncodingChanged;
 use crate::alignment_viewer::SequenceEncoding::Aminoacidic;
-use crate::{hershey, utils};
+use crate::hershey::push_glyph;
+use crate::utils;
 use crate::types::SequenceEncoding;
-use crate::{
-    components::{COLOR_NT_A, COLOR_NT_C, COLOR_NT_G, COLOR_NT_N, COLOR_NT_T, COLOR_NT_Z},
-    types::MultiAlignment,
-};
+use crate::types::MultiAlignment;
 
 
 const MIN_ZOOM: f32 = 6.0;
@@ -163,6 +160,11 @@ impl<'a> canvas::Program<AlignmentEvent> for AlignmentProgram<'a> {
                     (dx, dy) = (dy, dx);
                 }
 
+                if state.kb_mods.alt() {
+                    dx *= 10.0;
+                    dy *= 10.0;
+                }
+
                 let max_x = self.state.max_len as f32 * cs;
                 let max_y = self.state.sequences.len() as f32 * cs;
 
@@ -178,8 +180,6 @@ impl<'a> canvas::Program<AlignmentEvent> for AlignmentProgram<'a> {
                 state.kb_mods = *modifiers;
                 None
             }
-            // Note: Wire Mouse::WheelScrolled to your app's `AlignmentState::set_scroll`
-            // or `zoom_by` by publishing a message from here.
             _ => None,
         }
     }
@@ -198,11 +198,11 @@ impl<'a> canvas::Program<AlignmentEvent> for AlignmentProgram<'a> {
             if is_aa { s.aa_seq.as_ref() } else { Some(&s.original_seq) }
         ).collect();
         let cs = self.state.cell_size as f32;
+        let pad = cs * 0.2;
         let (scroll_x, scroll_y) = (self.state.scroll_offset.x, self.state.scroll_offset.y);
 
         let grid_geometry = self.state.grid_cache.draw(renderer, bounds.size(), |frame| {
-            println!("Alora {:?}", Instant::now());
-            
+            let stroke = Stroke::default().with_color(Color::BLACK);
             let first_row = (scroll_y / cs).floor().max(0.0) as usize;
             let last_row = ((scroll_y + bounds.height) / cs)
                 .ceil()
@@ -218,6 +218,7 @@ impl<'a> canvas::Program<AlignmentEvent> for AlignmentProgram<'a> {
                 let row = seqs[row_idx].unwrap();
                 let y = row_idx as f32 * cs - scroll_y;
                 let row_end_col = last_col.min(row.len());
+                let mut txt_builder = Builder::new();
 
                 for col_idx in first_col..row_end_col {
                     let base = row[col_idx];
@@ -232,12 +233,11 @@ impl<'a> canvas::Program<AlignmentEvent> for AlignmentProgram<'a> {
                     );
 
                     if cs >= MIN_ZOOM_FOR_TEXT {
-                        let stroke = Stroke::default().with_color(Color::BLACK);
-                        for p in hershey::get_scaled_character(base, x, y-2.0, cs as usize) {
-                            frame.stroke(&p, stroke);
-                        }
+                        push_glyph(&mut txt_builder, base as u8, x + pad, y + pad, cs - pad*2.0);
                     }
                 }
+
+                frame.stroke(&txt_builder.build(), stroke);
             }
         });
 
