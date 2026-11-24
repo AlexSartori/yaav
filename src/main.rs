@@ -1,6 +1,6 @@
 use std::fs;
 
-use iced::{Subscription, Task, Theme, widget::{Column, column}};
+use iced::{Length::{self, Fill}, Point, Subscription, Task, Theme, widget::{self, Column, column, row, scrollable, space}};
 use rfd::AsyncFileDialog;
 use keybinds::Keybinds;
 
@@ -11,7 +11,7 @@ mod components;
 mod hershey;
 mod utils;
 
-use crate::alignment_viewer::{AlignmentState, AlignmentView, Message};
+use crate::alignment_viewer::{AlignmentEvent, AlignmentState, AlignmentView, Message};
 use crate::toolbar::toolbar;
 use crate::types::{MultiAlignment,Sequence};
 use crate::components::PALETTE;
@@ -19,6 +19,7 @@ use crate::components::PALETTE;
 
 const DEFAULT_ZOOM: f32 = 14.0;
 const DEFAULT_SCROLL_SPEED: f32 = 4.0;
+const SCROLLBAR_THICKNESS: f32 = 12.0;
 
 #[derive(Debug,Clone)]
 enum KBAction {
@@ -29,7 +30,9 @@ enum KBAction {
 struct AppWindow {
     alignment_state: AlignmentState,
     keybinds: Keybinds<KBAction>,
-    is_loading: bool
+    is_loading: bool,
+    v_scrollbar_id: widget::Id,
+    h_scrollbar_id: widget::Id,
 }
 
 impl Default for AppWindow {
@@ -40,7 +43,9 @@ impl Default for AppWindow {
         Self {
             alignment_state: AlignmentState::new(Box::new(vec![]), DEFAULT_ZOOM, DEFAULT_SCROLL_SPEED),
             keybinds: kb,
-            is_loading: false
+            is_loading: false,
+            v_scrollbar_id: widget::Id::unique(),
+            h_scrollbar_id: widget::Id::unique(),
         }
     }
 }
@@ -93,18 +98,85 @@ impl AppWindow {
                 }
             },
             Message::AlignmentStateChanged(evt) => {
-                self.alignment_state.update(evt);
+                self.alignment_state.update(evt.clone());
+                if let AlignmentEvent::ScrollTo(p) = evt {
+                    Task::batch([
+                        widget::operation::scroll_to::<Message>(
+                            self.h_scrollbar_id.clone(),
+                            scrollable::AbsoluteOffset{ x: p.x, y: 0.0 }
+                        ),
+                        widget::operation::scroll_to::<Message>(
+                            self.v_scrollbar_id.clone(),
+                            scrollable::AbsoluteOffset{ x: 0.0, y: p.y }
+                        )
+                    ])
+                } else {
+                    Task::none()
+                }
+            },
+            Message::ScrolledX(viewport) => {
+                let new_x = viewport.absolute_offset().x;
+
+                if new_x != self.alignment_state.scroll_offset.x {
+                    self.alignment_state.update(
+                        alignment_viewer::AlignmentEvent::ScrollTo(
+                            Point { x: new_x, y: self.alignment_state.scroll_offset.y }
+                        )
+                    );
+                }
+
+                Task::none()
+            },
+            Message::ScrolledY(viewport) => {
+                let new_y = viewport.absolute_offset().y;
+
+                if new_y != self.alignment_state.scroll_offset.y {
+                    self.alignment_state.update(
+                        alignment_viewer::AlignmentEvent::ScrollTo(
+                            Point { x: self.alignment_state.scroll_offset.x, y: new_y }
+                        )
+                    );
+                }
+                
                 Task::none()
             }
         }
     }
 
     pub fn view(&'_ self) -> Column<'_, Message> {
+        let alv = AlignmentView::new(&self.alignment_state, Message::AlignmentStateChanged);
+        let w = alv.get_cavas_width();
+        let h = alv.get_canvas_height();
+
         column![
             toolbar(&self.alignment_state),
-            AlignmentView::new(&self.alignment_state, Message::AlignmentStateChanged)
+            row![
+                alv,
+                scrollable(space().width(1.0).height(h))
+                    .id(self.v_scrollbar_id.clone())
+                    .width(Length::Fixed(SCROLLBAR_THICKNESS))
+                    .height(Length::Fill)
+                    .direction(scrollable::Direction::Vertical(
+                        scrollable::Scrollbar::new()
+                            .width(SCROLLBAR_THICKNESS)
+                            .scroller_width(SCROLLBAR_THICKNESS)
+                    ))
+                    .on_scroll(Message::ScrolledY)
+            ],
+            row![
+                scrollable(space().height(1.0).width(w))
+                    .id(self.h_scrollbar_id.clone())
+                    .width(Length::Fill)
+                    .height(Length::Fixed(SCROLLBAR_THICKNESS))
+                    .direction(scrollable::Direction::Horizontal(
+                        scrollable::Scrollbar::new()
+                            .width(SCROLLBAR_THICKNESS)
+                            .scroller_width(SCROLLBAR_THICKNESS)
+                    ))
+                    .on_scroll(Message::ScrolledX),
+                space().width(SCROLLBAR_THICKNESS).height(1.0)
+            ]
         ]
-        .spacing(4)
         .padding(4)
         .into()
     }

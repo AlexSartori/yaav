@@ -2,7 +2,7 @@ use iced::mouse::ScrollDelta;
 use iced::widget::canvas::path::Builder;
 use iced::widget::canvas::{Cache, Path, Stroke};
 use iced::{Color, Element, Length, Point, Rectangle, Size, Theme, keyboard, mouse};
-use iced::widget::{canvas, combo_box};
+use iced::widget::{canvas, combo_box, scrollable};
 use crate::alignment_viewer::SequenceEncoding::Aminoacidic;
 use crate::components::{COLOR_CELL_HOVERED, COLOR_CELL_SELECTED};
 use crate::hershey::push_glyph;
@@ -24,7 +24,9 @@ pub enum Message {
     AlignmentStateChanged(AlignmentEvent),
     OpenFasta,
     ZoomMinus,
-    ZoomPlus
+    ZoomPlus,
+    ScrolledX(scrollable::Viewport),
+    ScrolledY(scrollable::Viewport)
 }
 
 #[derive(Debug,Clone)]
@@ -339,6 +341,14 @@ impl<'a, Message> AlignmentView<'a, Message> {
     pub fn height(mut self, height: impl Into<Length>) -> Self {
         self.height = height.into();
         self
+    }
+    
+    pub fn get_cavas_width(&self) -> f32 {
+        self.state.max_len as f32 * self.state.cell_size
+    }
+
+    pub fn get_canvas_height(&self) -> f32 {
+        self.state.sequences.len() as f32 * self.state.cell_size
     }
 }
 
