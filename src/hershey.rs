@@ -34,6 +34,7 @@ const GLYPH_LUT: [&[(u8, u8)]; 128] = {
     t[b'Z' as usize] = &[(0, 0), (8, 0), (0, 8), (8, 8)];
     t[b'*' as usize] = &[(4, 0), (4, 8), (M, 0), (0, 2), (8, 6), (M, 0), (8, 2), (0, 6)];
     t[b'-' as usize] = &[(0, 4), (8, 4)];
+    t[b'?' as usize] = &[(0, 4), (0, 2), (2, 0), (6, 0), (8, 2), (8, 4), (4, 4), (4, 6), (M, 0), (4, 7), (4, 8)];
 
     // Mirror uppercase entries into lowercase ASCII slots (`a..=z`) for branchless case-insensitivity
     let mut c = b'A';
