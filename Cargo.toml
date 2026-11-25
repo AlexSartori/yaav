@@ -1,6 +1,10 @@
 [package]
 name = "yaav"
 version = "0.1.0"
+description = "Yet Another Alignment Viewer. Fast. Reliable. Essential."
+authors = ["Alessandro Sartori <alex.sartori1997@gmail.com>"]
+license = "Beerware"
+keywords = ["alignment viewer", "bioinformatics", "fasta"]
 edition = "2024"
 
 [dependencies]

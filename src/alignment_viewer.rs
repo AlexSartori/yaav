@@ -19,8 +19,10 @@ const MIN_ZOOM_FOR_TEXT: f32 = 12.0;
 #[derive(Debug,Clone)]
 pub enum Message {
     KBEvent(keyboard::Event),
+    ShowError(String),
+    DialogDismissed,
     MultiAlignmentReady(Result<MultiAlignment,String>),
-    MultiAlignmentStartLoading(Result<std::path::PathBuf,String>),
+    LoadMultiAlignment(Result<std::path::PathBuf,String>),
     AlignmentStateChanged(AlignmentEvent),
     OpenFasta,
     ZoomMinus,
@@ -299,14 +301,13 @@ impl<'a> canvas::Program<AlignmentEvent> for AlignmentProgram<'a> {
                     if y1 > y2 {
                         (y1, y2) = (y2, y1);
                     }
-                    let (w, h) = (x2 - x1 + cs, y2 - y1 + cs);
+                    let top_left = Point{ x: x1, y: y1 };
+                    let size = Size::new(x2 - x1 + cs, y2 - y1 + cs);
 
-                    let highlight = Path::rectangle(Point::new(x1, y1), Size::new(w, h));
+                    frame.fill_rectangle(top_left, size,COLOR_CELL_SELECTED.scale_alpha(0.2));
                     frame.stroke(
-                        &highlight,
-                        Stroke::default()
-                            .with_color(COLOR_CELL_SELECTED)
-                            .with_width(2.0),
+                        &Path::rectangle(top_left, size),
+                        Stroke::default().with_color(COLOR_CELL_SELECTED).with_width(3.0),
                     );
                 }
             });

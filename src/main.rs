@@ -1,7 +1,7 @@
-use std::fs;
+use std::{fs, path::PathBuf};
 
-use iced::{Length::{self, Fill}, Point, Subscription, Task, Theme, widget::{self, Column, column, row, scrollable, space}};
-use rfd::AsyncFileDialog;
+use iced::{Length, Point, Subscription, Task, Theme, widget::{self, Column, column, row, scrollable, space}};
+use rfd::{AsyncFileDialog, AsyncMessageDialog, MessageButtons, MessageLevel};
 use keybinds::Keybinds;
 
 mod alignment_viewer;
@@ -32,7 +32,7 @@ struct AppWindow {
     keybinds: Keybinds<KBAction>,
     is_loading: bool,
     v_scrollbar_id: widget::Id,
-    h_scrollbar_id: widget::Id,
+    h_scrollbar_id: widget::Id
 }
 
 impl Default for AppWindow {
@@ -45,33 +45,65 @@ impl Default for AppWindow {
             keybinds: kb,
             is_loading: false,
             v_scrollbar_id: widget::Id::unique(),
-            h_scrollbar_id: widget::Id::unique(),
+            h_scrollbar_id: widget::Id::unique()
         }
     }
 }
 
 impl AppWindow {
+    fn new() -> (Self, Task<Message>) {
+        let startup_task = if let Some(arg) = std::env::args().nth(1) {
+            Task::done(Message::LoadMultiAlignment(Ok(PathBuf::from(arg))))
+        } else {
+            Task::none()
+        };
+
+        (Self::default(), startup_task)
+    }
+
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::OpenFasta => {
-                Task::perform(pick_file(), Message::MultiAlignmentStartLoading)
+                Task::perform(pick_file(), Message::LoadMultiAlignment)
             },
-            Message::MultiAlignmentStartLoading(Ok(p)) => {
-                self.is_loading = true;
-                Task::perform(read_fasta(p), Message::MultiAlignmentReady)
+            Message::ShowError(err_msg) => {
+                Task::perform(async move {
+                        AsyncMessageDialog::new()
+                            .set_level(MessageLevel::Error)
+                            .set_title("Error")
+                            .set_description(&err_msg)
+                            .set_buttons(MessageButtons::Ok)
+                            .show()
+                            .await;
+                    }, |_| Message::DialogDismissed,
+                )
             },
-            Message::MultiAlignmentStartLoading(Err(e)) => {
-                println!("No file selected: {}", e);
+            Message::DialogDismissed => {
                 Task::none()
+            },
+            Message::LoadMultiAlignment(ma) => {
+                match ma {
+                    Ok(p) => {
+                        self.is_loading = true;
+                        Task::perform(read_fasta(p), Message::MultiAlignmentReady)
+                    }, Err(e) => {
+                        Task::done(Message::ShowError(
+                            format!("Invalid file path: {}", e)
+                        ))
+                    }
+                }
             },
             Message::MultiAlignmentReady(m) => {
                 self.is_loading = false;
 
                 match m {
-                    Ok(m_ok) => self.alignment_state = AlignmentState::new(Box::new(m_ok), self.alignment_state.cell_size, self.alignment_state.scroll_speed),
-                    _ => println!("Error loading multi alignment") // TODO: alert
+                    Ok(m_ok) => {
+                        self.alignment_state = AlignmentState::new(Box::new(m_ok), self.alignment_state.cell_size, self.alignment_state.scroll_speed);
+                        Task::none()
+                    }, Err(e) => {
+                        Task::done(Message::ShowError(format!("Failed to load alignment: {}", e)))
+                    }
                 }
-                Task::none()
             },
             Message::ZoomMinus => {
                 Task::done(Message::AlignmentStateChanged(alignment_viewer::AlignmentEvent::ZoomBy(-1.0)))
@@ -206,40 +238,54 @@ async fn pick_file() -> Result<std::path::PathBuf, String> {
 
 
 async fn read_fasta(p: std::path::PathBuf) -> Result<MultiAlignment, String> {
-    let res_contents = fs::read_to_string(p.as_path());
-    if res_contents.is_err() {
-        return Err("Cannot read file".to_owned());
-    }
-    
-    let mut result = MultiAlignment::new();
-    let contents = res_contents.expect("File was succesfully read but contents are somehow unavailable");
     let mut uid = 0u64;
     let mut new_seq = |h: String, s: String| {
         uid += 1;
         Sequence::new(uid, &h.to_string(), s.chars().collect())
     };
+    
+    match fs::read_to_string(p.as_path()) {
+        Err(err) =>
+            Err(format!(
+                "Cannot open file {} ({})",
+                p.to_str().unwrap_or("<invalid PathBuf contents>"),
+                err.to_string()
+            )),
+        Ok(file_contents) => {
+            let mut result = MultiAlignment::new();
+            let mut curr_header = "".to_owned();
+            let mut curr_seq = "".to_owned();
+            let mut error_msg = None;
 
-    let mut curr_header = "".to_owned();
-    let mut curr_seq = "".to_owned();
-    for l in contents.lines() {
-        if l.starts_with(">") {
+            for l in file_contents.lines() {
+                if l.starts_with(">") {
+                    result.push(new_seq(curr_header, curr_seq));
+                    curr_header = l.to_owned();
+                    curr_seq = "".to_owned()
+                } else {
+                    if l.chars().any(|c| !c.is_ascii_alphabetic()) {
+                        error_msg = Some("Invalid characters found in sequence".to_owned());
+                        break;
+                    }
+                    curr_seq.extend(l.chars());
+                }
+            }
+
             result.push(new_seq(curr_header, curr_seq));
-            curr_header = l.to_owned();
-            curr_seq = "".to_owned()
-        } else {
-            curr_seq.extend(l.chars());
+
+            if let Some(err) = error_msg {
+                Err(err)
+            } else {
+                Ok(result)
+            }
         }
     }
-    result.push(new_seq(curr_header, curr_seq));
-
-    Ok(result)
 }
 
-// $env:CARGO_INCREMENTAL=0; cargo run
 fn main() -> iced::Result {
-    iced::application(AppWindow::default, AppWindow::update, AppWindow::view)
+    iced::application(AppWindow::new, AppWindow::update, AppWindow::view)
     .subscription(AppWindow::subscription)
-    .title("Sweggheti sweg")
+    .title("YAAV")
     .theme(Theme::custom("alesc", PALETTE))
     .run()
 }
