@@ -263,7 +263,7 @@ async fn read_fasta(p: std::path::PathBuf) -> Result<MultiAlignment, String> {
                     curr_header = l.to_owned();
                     curr_seq = "".to_owned()
                 } else {
-                    if l.chars().any(|c| !c.is_ascii_alphabetic()) {
+                    if l.chars().any(|c| !c.is_ascii_alphabetic() && c != '-') {
                         error_msg = Some("Invalid characters found in sequence".to_owned());
                         break;
                     }
