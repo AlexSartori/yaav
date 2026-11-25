@@ -1,28 +1,71 @@
+name: Compile and release
+
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  BINARY_NAME: yaav
 
 jobs:
-  release:
-    name: release ${{ matrix.target }}
-    runs-on: ubuntu-latest
+  build-and-release:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-pc-windows-gnu
-            archive: zip
-          - target: x86_64-unknown-linux-musl
-            archive: tar.gz
-          - target: x86_64-apple-darwin
-            archive: zip
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset_name: linux-x86_64
+            ext: ""
+          - os: macos-latest # Apple Silicon (M1/M2/M3/M4)
+            target: aarch64-apple-darwin
+            asset_name: macos-aarch64
+            ext: ""
+          - os: macos-latest # Intel Mac (cross-compiled)
+            target: x86_64-apple-darwin
+            asset_name: macos-x86_64
+            ext: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_name: windows-x86_64
+            ext: ".exe"
+
+    runs-on: ${{ matrix.os }}
+
     steps:
-      - uses: actions/checkout@master
-      - name: Compile and release
-        uses: rust-build/rust-build.action@v1.4.5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          RUSTTARGET: ${{ matrix.target }}
-          TOOLCHAIN_VERSION: stable
-          ARCHIVE_TYPES: ${{ matrix.archive }}
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package binary
+        shell: bash
+        run: |
+          BIN_PATH="target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}${{ matrix.ext }}"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            7z a "${{ env.BINARY_NAME }}-${{ matrix.asset_name }}.zip" "$BIN_PATH"
+          else
+            tar -czf "${{ env.BINARY_NAME }}-${{ matrix.asset_name }}.tar.gz" -C "target/${{ matrix.target }}/release" "${{ env.BINARY_NAME }}"
+          fi
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.BINARY_NAME }}-${{ matrix.asset_name }}.tar.gz
+            ${{ env.BINARY_NAME }}-${{ matrix.asset_name }}.zip
