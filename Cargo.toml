@@ -12,7 +12,6 @@ iced = { version = "0.14.0", features = ["canvas", "lazy"] }
 iced_font_awesome = "0.4.4"
 keybinds = { git = "https://github.com/podzolelements/keybinds-rs", branch = "iced_0.14.0", features = ["iced"] }
 rfd = "0.18.0"
-winresource = "0.1"
 
 [profile.release]
 strip = true
