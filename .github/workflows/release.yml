@@ -56,16 +56,21 @@ jobs:
       - name: Package binary
         shell: bash
         run: |
-          BIN_PATH="target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}${{ matrix.ext }}"
+          # GITHUB_REF_NAME contains the tag (e.g., "v0.1.0")
+          RELEASE_NAME="${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.asset_name }}"
+          BIN_DIR="target/${{ matrix.target }}/release"
+          BIN_FILE="${{ env.BINARY_NAME }}${{ matrix.ext }}"
+
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            7z a "${{ env.BINARY_NAME }}-${{ matrix.asset_name }}.zip" "$BIN_PATH"
+            # cd into the release folder first so 7z only zips yaav.exe, not the target/ tree
+            (cd "$BIN_DIR" && 7z a "$OLDPWD/${RELEASE_NAME}.zip" "$BIN_FILE")
           else
-            tar -czf "${{ env.BINARY_NAME }}-${{ matrix.asset_name }}.tar.gz" -C "target/${{ matrix.target }}/release" "${{ env.BINARY_NAME }}"
+            tar -czf "${RELEASE_NAME}.tar.gz" -C "$BIN_DIR" "$BIN_FILE"
           fi
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ env.BINARY_NAME }}-${{ matrix.asset_name }}.tar.gz
-            ${{ env.BINARY_NAME }}-${{ matrix.asset_name }}.zip
+            ${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.asset_name }}.tar.gz
+            ${{ env.BINARY_NAME }}-${{ github.ref_name }}-${{ matrix.asset_name }}.zip
